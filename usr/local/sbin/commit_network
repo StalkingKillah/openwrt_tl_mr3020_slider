@@ -1,0 +1,16 @@
+#!/bin/sh
+. /usr/local/lib/slider_functions.sh
+
+(
+	flock -n 9 || exit 1
+	(
+		sleep 1
+		if commit_network_configuration; then
+			. /etc/diag.sh
+			get_status_led
+			status_led_on
+			sleep 2
+			status_led_off
+		fi
+	) 9>&-
+) 9>/tmp/commit_network.lock

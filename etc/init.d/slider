@@ -1,0 +1,8 @@
+#!/bin/sh /etc/rc.common
+. /usr/local/lib/slider_functions.sh
+
+START=15
+boot() {
+	write_state_to_uci
+	set_network_configuration
+}

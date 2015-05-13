@@ -1,0 +1,181 @@
+#!/bin/sh
+# based on
+# https://dev.openwrt.org/browser/trunk/target/linux/atheros/base-files/etc/hotplug.d/button/00-button
+# https://forum.openwrt.org/viewtopic.php?pid=172110#p172110
+
+. /usr/local/lib/slider_functions.sh
+. /lib/functions.sh
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+
+ME="hotplug.d"
+DEBUG=0
+
+handle () {
+	local handler=$1
+	eval $handler
+	write_state_to_uci
+}
+
+was_ap () {
+	get_state_from_uci
+	if [ "$?" = "3" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+button_ap () {
+	local cfg=$1
+	local hw_action=$2
+	local handler
+	
+	case "$hw_action" in
+		pressed)
+			log "AP Selected"
+			config_get handler $1 $hw_action
+			handle $handler
+			;;
+		released)
+			debug "AP Released"
+			if is_3g; then
+				debug "3G Selected ?"
+				main pressed BTN_0
+			elif is_wisp; then
+				debug "WISP Selected ?"
+				main pressed BTN_1
+			fi
+			;;
+		esac
+}
+
+button_3g () {
+	local cfg=$1
+	local hw_action=$2
+	
+	case "$hw_action" in
+		pressed)
+			if is_ap; then
+				button_ap $@
+			else
+				log "3G Selected"
+				config_get handler $1 $hw_action
+				handle $handler
+			fi
+			;;
+		released)
+			if was_ap; then
+				button_ap $@
+			else
+				debug "3G Released"
+			fi
+			;;
+		esac
+}
+
+button_wisp () {
+	local cfg=$1
+	local hw_action=$2
+	local handler
+	
+	case "$hw_action" in
+		pressed)
+			if is_ap; then
+				button_ap $@
+			else
+				log "WISP Selected"
+				config_get handler $1 $hw_action
+				handle $handler
+			fi
+			;;
+		released)
+			if was_ap; then
+				button_ap $@
+			else
+				debug "WISP Released"
+			fi
+			;;
+		esac
+}
+
+button_wps () {
+	local cfg=$1
+	local hw_action=$2
+	local seen=$3
+	local hold_min
+	local hold_max
+	local handler
+	
+	config_get hold_min $cfg hold_min
+	config_get hold_max $cfg hold_max
+	
+	case "$hw_action" in
+		pressed)
+			debug "WPS Selected"
+			;;
+		released)
+			debug "WPS Released"
+			if [ -n "$hold_min" -a -n "$hold_max" -a "$seen" -ge "$hold_min" -a "$seen" -le "$hold_max" ]; then
+				config_get handler $1 hold
+				log "WPS held for $seen seconds => $handler"
+			else
+				config_get handler $1 pressed
+				log "WPS pressed => $handler"
+			fi
+			if [ -n "$handler" ]; then
+				eval $handler
+			fi
+			;;
+		esac
+}
+
+do_button () {
+	local cfg=$1
+	local button=${2:-$BUTTON}
+	local action=${3:-$ACTION}
+	local hw_button
+
+	config_get hw_button $cfg hw_button
+	
+	if [ "$button" = "$hw_button" ]; then
+
+		debug "==="
+		if [ "$button" != "$BUTTON" ]; then
+			debug "=> Button overriden"
+		fi
+		if [ "$action" != "$ACTION" ]; then
+			debug "=> Action overriden"
+		fi
+		debug "BUTTON: $button ACTION: $action SEEN: $SEEN"
+
+		case "$button" in
+			BTN_0)
+				# Check previous state, displays AP release as 3G release
+				button_3g $cfg $action $SEEN
+				return -1
+				;;
+			BTN_1)
+				button_wisp $cfg $action $SEEN
+				return -1
+				;;
+			wps)
+				button_wps $cfg $action $SEEN
+				return -1
+				;;
+			*)
+				log "BUTTON: $button ACTION: $action SEEN: $SEEN"
+				;;
+			esac
+		fi
+}
+
+main () {
+	local override_action=$1
+	local override_button=$2
+	config_load system
+	config_foreach do_button button $override_button $override_action
+	log "FINISHED!"
+}
+
+main

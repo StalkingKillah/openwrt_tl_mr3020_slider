@@ -1,0 +1,5 @@
+#!/bin/sh
+. /usr/local/lib/slider_functions.sh
+
+get_slider_state
+echo $?

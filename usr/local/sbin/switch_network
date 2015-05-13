@@ -1,0 +1,19 @@
+#!/bin/sh
+. /usr/local/lib/slider_functions.sh
+
+(
+	flock -n 9 || exit 1
+	(
+		sleep 1
+		if switch_configuration; then
+			. /etc/diag.sh
+			get_status_led
+			status_led_set_timer 200 200
+			logger -t "$ME" "Reloading network"
+			/etc/init.d/network restart
+			status_led_on
+			sleep 2
+			status_led_off
+		fi
+	) 9>&-
+) 9>/tmp/switch_network.lock
